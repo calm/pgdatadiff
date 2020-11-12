@@ -35,56 +35,83 @@ class DBDiff(object):
 
     def diff_table_data(self, tablename):
         try:
-            firsttable = Table(tablename, self.firstmeta, autoload=True)
-            firstquery = self.firstsession.query(
-                firsttable)
-            secondtable = Table(tablename, self.secondmeta, autoload=True)
-            secondquery = self.secondsession.query(
-                secondtable)
-            if firstquery.count() != secondquery.count():
-                return False, f"counts are different" \
-                              f" {firstquery.count()} != {secondquery.count()}"
-            if firstquery.count() == 0:
-                return None, "tables are empty"
             if self.count_only is True:
+                firsttable = Table(tablename, self.firstmeta, autoload=True)
+                firstquery = self.firstsession.query(
+                    firsttable)
+                secondtable = Table(tablename, self.secondmeta, autoload=True)
+                secondquery = self.secondsession.query(
+                    secondtable)
+                first_table_count = firstquery.count()
+                if first_table_count != secondquery.count():
+                    return False, f"counts are different" \
+                        f" {first_table_count} != {secondquery.count()}"
+                if first_table_count == 0:
+                    return None, "tables are empty"
                 return True, "Counts are the same"
-            pk = ",".join(self.firstinspector.get_pk_constraint(tablename)[
-                              'constrained_columns'])
-            if not pk:
-                return None, "no primary key(s) on this table." \
-                             " Comparision is not possible."
-
         except NoSuchTableError:
             return False, "table is missing"
 
+        pks = self.firstinspector.get_pk_constraint(tablename)[
+                            'constrained_columns']
+        if not pks:
+            return None, "no primary key(s) on this table." \
+                            " Comparison is not possible."
+
+        next_offset_select_expr = ', '.join(
+            ('last({pk})'.format(pk=pk) for pk in pks)
+        )
+        order_expr = ', '.join(pks)
+        offset_expr = ' AND '.join('{pk} >= :{pk}'.format(pk=pk) for pk in pks)
+
         SQL_TEMPLATE_HASH = f"""
-        SELECT md5(array_agg(md5((t.*)::varchar))::varchar)
-        FROM (
-                SELECT *
-                FROM {tablename}
-                ORDER BY {pk} limit :row_limit offset :row_offset
-            ) AS t;
-                        """
+        SELECT
+            md5(array_agg(md5((t.*)::varchar))::varchar) as hash,
+            {next_offset_select_expr}
+        FROM
+            (
+                SELECT * from {tablename}
+                WHERE NOT :has_offset OR ({offset_expr})
+                ORDER BY {order_expr}
+                LIMIT {self.chunk_size}
+            ) t;
+        """
 
+        done = False
         position = 0
+        offsets = {pk: None for pk in pks}
 
-        while position <= firstquery.count():
+        while not done:
+            offsets['has_offset'] = position > 0
             firstresult = self.firstsession.execute(
                 SQL_TEMPLATE_HASH,
-                {"row_limit": self.chunk_size,
-                 "row_offset": position}).fetchone()
+                offsets)
             secondresult = self.secondsession.execute(
                 SQL_TEMPLATE_HASH,
-                {"row_limit": self.chunk_size,
-                 "row_offset": position}).fetchone()
-            if firstresult != secondresult:
-                return False, f"data is different - position {position} -" \
-                              f" {position + self.chunk_size}"
+                offsets)
+
+            if firstresult.rowcount != secondresult.rowcount:
+                return False, f"row count mismatch at row {position}; " \
+                              f"offsets: {offsets}"
+
+            (firsthash, *firstpks) = firstresult.fetchone()
+            (secondhash, *secondpks) = secondresult.fetchone()
+
+            if firsthash != secondhash:
+                return False, f"data hash are different at row {position}; " \
+                              f"offsets: {offsets}"
+
+            if firstpks != secondpks:
+                return False, f"data pks are different  at row {position};" \
+                              f"offsets: {offsets}"
+
             position += self.chunk_size
+            for idx, pk in enumerate(pks):
+                offsets[pk] = firstpks[idx]
         return True, "data is identical."
 
     def get_all_sequences(self):
-        GET_SEQUENCES_SQL = """SELECT c.relname FROM 
+        GET_SEQUENCES_SQL = """SELECT c.relname FROM
         pg_class c WHERE c.relkind = 'S';"""
         return [x[0] for x in
                 self.firstsession.execute(GET_SEQUENCES_SQL).fetchall()]
@@ -136,6 +163,9 @@ class DBDiff(object):
 
     def diff_all_table_data(self):
         failures = 0
+
+        self.create_aggregate_functions()
+
         print(bold(red('Starting table analysis.')))
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=sa_exc.SAWarning)
@@ -158,4 +188,22 @@ class DBDiff(object):
         if failures > 0:
             return 1
         return 0
+
+    def create_aggregate_functions(self):
+        stmt = """
+        CREATE OR REPLACE FUNCTION public.last_agg ( anyelement, anyelement )
+        RETURNS anyelement LANGUAGE sql IMMUTABLE STRICT AS $$
+                SELECT $2;
+        $$;
+
+        -- And then wrap an aggregate around it
+        CREATE AGGREGATE public.last (
+                sfunc    = public.last_agg,
+                basetype = anyelement,
+                stype    = anyelement
+        );
+        """
+        self.firstsession.execute(stmt)
+        self.secondsession.execute(stmt)
+
 

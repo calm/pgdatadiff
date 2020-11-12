@@ -24,8 +24,8 @@ from docopt import docopt
 def main():
     arguments = docopt(
         __doc__, version=pkg_resources.require("pgdatadiff")[0].version)
-    first_db_connection_string=arguments['--firstdb']
-    second_db_connection_string=arguments['--seconddb']
+    first_db_connection_string = arguments['--firstdb']
+    second_db_connection_string = arguments['--seconddb']
     if not first_db_connection_string.startswith("postgres://") or \
             not second_db_connection_string.startswith("postgres://"):
         print(red("Only Postgres DBs are supported"))
@@ -42,3 +42,7 @@ def main():
         if differ.diff_all_sequences():
             return 1
     return 0
+
+
+if __name__ == '__main__':
+    main()
