@@ -1,10 +1,11 @@
 import warnings
+import time
 
 from fabulous.color import bold, green, red
 from halo import Halo
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.engine import create_engine
-from sqlalchemy.exc import NoSuchTableError, ProgrammingError
+from sqlalchemy.exc import NoSuchTableError, ProgrammingError, OperationalError
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm.session import sessionmaker
 from sqlalchemy.sql.schema import MetaData, Table
@@ -83,12 +84,12 @@ class DBDiff(object):
 
         while not done:
             offsets['has_offset'] = position > 0
-            firstresult = self.firstsession.execute(
+            firstresult = retry(lambda: self.firstsession.execute(
                 SQL_TEMPLATE_HASH,
-                offsets)
-            secondresult = self.secondsession.execute(
+                offsets))
+            secondresult = retry(lambda: self.secondsession.execute(
                 SQL_TEMPLATE_HASH,
-                offsets)
+                offsets))
 
             if firstresult.rowcount != secondresult.rowcount:
                 return False, f"row count mismatch at row {position}; " \
@@ -207,3 +208,20 @@ class DBDiff(object):
         self.secondsession.execute(stmt)
 
 
+def retry(fn):
+    i = 0
+    max_tries = 3
+    base_timeout = 1
+    while True:
+        try:
+            return fn()
+        except OperationalError as ex:
+            print('operational error running query:', ex)
+            if i < max_tries:
+                delay = 2**i * base_timeout
+                print(
+                    f'Attempt {i} of {max_tries}, retrying in {delay} secs.'
+                )
+                time.sleep(delay)
+            else:
+                raise
