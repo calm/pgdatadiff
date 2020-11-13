@@ -99,8 +99,6 @@ class DBDiff(object):
             (firsthash, *firstpks) = firstresult.fetchone()
             (secondhash, *secondpks) = secondresult.fetchone()
 
-            print('results:', firsthash, firstpks, secondhash, secondpks)
-
             if firsthash != secondhash:
                 return False, f"data hash are different at row {position}; " \
                               f"offsets: {offsets}"
