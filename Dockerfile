@@ -1,4 +1,11 @@
-FROM alpine:3.10
-RUN apk add python3-dev postgresql-dev py3-pip gcc musl-dev
-COPY dist /tmp/dist
-RUN pip3 install /tmp/dist/*.tar.gz
+FROM python:3.8-slim
+
+RUN apt-get update && apt-get install -y git libpq-dev gcc
+
+WORKDIR /app
+
+COPY . /app
+
+RUN python setup.py install
+
+CMD ["pgdatadiff"]
