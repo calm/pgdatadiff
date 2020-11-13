@@ -1,3 +1,4 @@
+import sys
 import warnings
 import time
 
@@ -98,6 +99,8 @@ class DBDiff(object):
             (firsthash, *firstpks) = firstresult.fetchone()
             (secondhash, *secondpks) = secondresult.fetchone()
 
+            print('results:', firsthash, firstpks, secondhash, secondpks)
+
             if firsthash != secondhash:
                 return False, f"data hash are different at row {position}; " \
                               f"offsets: {offsets}"
@@ -173,18 +176,14 @@ class DBDiff(object):
             tables = sorted(
                 self.firstinspector.get_table_names(schema="public"))
             for table in tables:
-                with Halo(
-                        text=f"Analysing table {table}. "
-                             f"[{tables.index(table) + 1}/{len(tables)}]",
-                        spinner='dots') as spinner:
-                    result, message = self.diff_table_data(table)
-                    if result is True:
-                        spinner.succeed(f"{table} - {message}")
-                    elif result is None:
-                        spinner.warn(f"{table} - {message}")
-                    else:
-                        failures += 1
-                        spinner.fail(f"{table} - {message}")
+                status_update = StatusUpdate(
+                    f"Analysing table {table}. "
+                    f"[{tables.index(table) + 1}/{len(tables)}]"
+                )
+                result, message = self.diff_table_data(table)
+                status_update.complete(result, f"{table} - {message}")
+                if result is False:
+                    failures += 1
         print(bold(green('Table analysis complete.')))
         if failures > 0:
             return 1
@@ -206,6 +205,33 @@ class DBDiff(object):
         """
         self.firstsession.execute(stmt)
         self.secondsession.execute(stmt)
+
+
+class StatusUpdate(object):
+    def __init__(self, title):
+        if sys.stdout.isatty():
+            print('imatty????!')
+            self.spinner = Halo(title, spinner='dots')
+            self.spinner.start()
+        else:
+            print(title)
+
+    def complete(self, success, message):
+        if self.spinner:
+            if success is True:
+                self.spinner.succeed(message)
+            elif success is False:
+                self.spinner.fail(message)
+            else:
+                self.spinner.warn(message)
+            self.spinner.stop()
+        else:
+            if success is True:
+                print("success: ", message)
+            elif success is False:
+                print("failed: ", message)
+            else:
+                print("warning: ", message)
 
 
 def retry(fn):
