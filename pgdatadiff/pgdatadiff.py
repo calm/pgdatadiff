@@ -4,6 +4,7 @@ import time
 
 from fabulous.color import bold, green, red
 from halo import Halo
+from psycopg2 import DatabaseError
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.engine import create_engine
 from sqlalchemy.exc import NoSuchTableError, ProgrammingError, OperationalError
