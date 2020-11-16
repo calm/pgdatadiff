@@ -122,12 +122,14 @@ class DBDiff(object):
         GET_SEQUENCES_VALUE_SQL = f"SELECT last_value FROM {seq_name};"
 
         try:
-            firstvalue = \
-                self.firstsession.execute(GET_SEQUENCES_VALUE_SQL).fetchone()[
-                    0]
-            secondvalue = \
-                self.secondsession.execute(GET_SEQUENCES_VALUE_SQL).fetchone()[
-                    0]
+            firstvalue = retry(
+                lambda: self.firstsession.execute(GET_SEQUENCES_VALUE_SQL)
+                .fetchone()[0]
+            )
+            secondvalue = retry(
+                lambda: self.secondsession.execute(GET_SEQUENCES_VALUE_SQL)
+                .fetchone()[0]
+            )
         except ProgrammingError:
             self.firstsession.rollback()
             self.secondsession.rollback()
@@ -146,18 +148,14 @@ class DBDiff(object):
         sequences = sorted(self.get_all_sequences())
         failures = 0
         for sequence in sequences:
-            with Halo(
-                    text=f"Analysing sequence {sequence}. "
-                         f"[{sequences.index(sequence) + 1}/{len(sequences)}]",
-                    spinner='dots') as spinner:
-                result, message = self.diff_sequence(sequence)
-                if result is True:
-                    spinner.succeed(f"{sequence} - {message}")
-                elif result is None:
-                    spinner.warn(f"{sequence} - {message}")
-                else:
-                    failures += 1
-                    spinner.fail(f"{sequence} - {message}")
+            status_update = StatusUpdate(
+                f"Analysing sequence {sequence}. "
+                f"[{sequences.index(sequence) + 1}/{len(sequences)}]"
+            )
+            result, message = self.diff_sequence(sequence)
+            status_update.complete(result, f"{sequence} - {message}")
+            if result is False:
+                failures += 1
         print(bold(green('Sequence analysis complete.')))
         if failures > 0:
             return 1
@@ -208,7 +206,6 @@ class DBDiff(object):
 class StatusUpdate(object):
     def __init__(self, title):
         if sys.stdout.isatty():
-            print('imatty????!')
             self.spinner = Halo(title, spinner='dots')
             self.spinner.start()
         else:
