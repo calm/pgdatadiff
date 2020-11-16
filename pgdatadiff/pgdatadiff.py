@@ -236,13 +236,17 @@ def retry(fn):
     while True:
         try:
             return fn()
-        except OperationalError as ex:
+        except Exception as ex:
+            if (not isinstance(ex, DatabaseError) and
+                    not isinstance(ex, OperationalError)):
+                raise
             print('operational error running query:', ex)
             if i < max_tries:
                 delay = 2**i * base_timeout
                 print(
-                    f'Attempt {i} of {max_tries}, retrying in {delay} secs.'
+                    f'Attempt {i+1} of {max_tries}, retrying in {delay} secs.'
                 )
                 time.sleep(delay)
             else:
                 raise
+            i += 1
