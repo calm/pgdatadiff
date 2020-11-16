@@ -186,6 +186,7 @@ class DBDiff(object):
         return 0
 
     def create_aggregate_functions(self):
+        print('creating aggregate functions')
         stmt = """
         CREATE OR REPLACE FUNCTION public.last_agg ( anyelement, anyelement )
         RETURNS anyelement LANGUAGE sql IMMUTABLE STRICT AS $$
@@ -201,6 +202,8 @@ class DBDiff(object):
         """
         self.firstsession.execute(stmt)
         self.secondsession.execute(stmt)
+        self.firstsession.commit()
+        self.secondsession.commit()
 
 
 class StatusUpdate(object):
