@@ -65,6 +65,9 @@ class DBDiff(object):
         )
         order_expr = ', '.join(pks)
         offset_expr = ' AND '.join('{pk} >= :{pk}'.format(pk=pk) for pk in pks)
+        offset_expr += ' AND (' \
+            + ' OR '.join('{pk} <> :{pk}'.format(pk=pk) for pk in pks) \
+            + ')'
 
         SQL_TEMPLATE_HASH = f"""
         SELECT
