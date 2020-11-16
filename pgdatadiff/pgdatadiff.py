@@ -85,35 +85,36 @@ class DBDiff(object):
 
         done = False
         position = 0
-        offsets = {pk: None for pk in pks}
+        params = {pk: None for pk in pks}
 
         while not done:
-            offsets['has_offset'] = position > 0
+            params['has_offset'] = any(params.values())
+            print('table',tablename, ': position', position, '; params', params)
             firstresult = retry(lambda: self.firstsession.execute(
                 SQL_TEMPLATE_HASH,
-                offsets))
+                params))
             secondresult = retry(lambda: self.secondsession.execute(
                 SQL_TEMPLATE_HASH,
-                offsets))
+                params))
 
             if firstresult.rowcount != secondresult.rowcount:
                 return False, f"row count mismatch at row {position}; " \
-                              f"offsets: {offsets}"
+                              f"query params: {params}"
 
             (firsthash, *firstpks) = firstresult.fetchone()
             (secondhash, *secondpks) = secondresult.fetchone()
 
             if firsthash != secondhash:
                 return False, f"data hash are different at row {position}; " \
-                              f"offsets: {offsets}"
+                              f"query params: {params}"
 
             if firstpks != secondpks:
                 return False, f"data pks are different  at row {position};" \
-                              f"offsets: {offsets}"
+                              f"query params: {params}"
 
             position += self.chunk_size
             for idx, pk in enumerate(pks):
-                offsets[pk] = firstpks[idx]
+                params[pk] = firstpks[idx]
         return True, "data is identical."
 
     def get_all_sequences(self):

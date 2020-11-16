@@ -11,7 +11,7 @@ Options:
   --only-data        Only compare data, exclude sequences
   --only-sequences   Only compare seqences, exclude data
   --count-only       Do a quick test based on counts alone
-  --chunk-size=10000       The chunk size when comparing data [default: 10000]
+  --chunk-size=100000       The chunk size when comparing data [default: 100000]
 """
 
 import pkg_resources
