@@ -192,12 +192,15 @@ class DBDiff(object):
     def create_aggregate_functions(self):
         print('creating aggregate functions')
         stmt = """
+        DROP AGGREGATE IF EXISTS public.last(anyelement);
+
         CREATE OR REPLACE FUNCTION public.last_agg ( anyelement, anyelement )
         RETURNS anyelement LANGUAGE sql IMMUTABLE STRICT AS $$
                 SELECT $2;
         $$;
 
         -- And then wrap an aggregate around it
+
         CREATE AGGREGATE public.last (
                 sfunc    = public.last_agg,
                 basetype = anyelement,
