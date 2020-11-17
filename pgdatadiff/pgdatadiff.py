@@ -90,7 +90,7 @@ class DBDiff(object):
 
         while not done:
             params['has_offset'] = any(params.values())
-            print('table', tablename, ': position', position, '; params', params)
+            # print('table', tablename, ': position', position, '; params', params)
             firstresult = retry(lambda: self.firstsession.execute(
                 SQL_TEMPLATE_HASH,
                 params))
@@ -181,7 +181,7 @@ class DBDiff(object):
     def diff_all_table_data(self):
         failures = 0
 
-        #self.create_aggregate_functions()
+        self.create_aggregate_functions()
 
         print(bold(red('Starting table analysis.')))
         with warnings.catch_warnings():
