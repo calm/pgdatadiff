@@ -73,6 +73,7 @@ class DBDiff(object):
         SQL_TEMPLATE_HASH = f"""
         SELECT
             md5(array_agg(md5((t.*)::varchar))::varchar) as hash,
+            count(*) as count,
             {next_offset_select_expr}
         FROM
             (
@@ -89,7 +90,7 @@ class DBDiff(object):
 
         while not done:
             params['has_offset'] = any(params.values())
-            print('table',tablename, ': position', position, '; params', params)
+            print('table', tablename, ': position', position, '; params', params)
             firstresult = retry(lambda: self.firstsession.execute(
                 SQL_TEMPLATE_HASH,
                 params))
@@ -101,20 +102,31 @@ class DBDiff(object):
                 return False, f"row count mismatch at row {position}; " \
                               f"query params: {params}"
 
-            (firsthash, *firstpks) = firstresult.fetchone()
-            (secondhash, *secondpks) = secondresult.fetchone()
+            (firsthash, firstcount, *firstpks) = firstresult.fetchone()
+            (secondhash, secondcount, *secondpks) = secondresult.fetchone()
 
             if firsthash != secondhash:
                 return False, f"data hash are different at row {position}; " \
-                              f"query params: {params}"
+                              f"query params: {params}; " \
+                              f"first: {firsthash}; second: {secondhash}"
+
+            if firstcount != secondcount:
+                return False, f"row count are different at row {position}; " \
+                              f"query params: {params}; " \
+                              f"first: {firstcount}; second: {secondcount}"
 
             if firstpks != secondpks:
                 return False, f"data pks are different  at row {position};" \
-                              f"query params: {params}"
+                              f"query params: {params}; " \
+                              f"first: {firstpks}; second: {secondpks}"
 
             position += self.chunk_size
             for idx, pk in enumerate(pks):
                 params[pk] = firstpks[idx]
+
+            # we're done when we have less rows than the limit
+            done = firstcount < self.chunk_size
+
         return True, "data is identical."
 
     def get_all_sequences(self):
@@ -169,7 +181,7 @@ class DBDiff(object):
     def diff_all_table_data(self):
         failures = 0
 
-        self.create_aggregate_functions()
+        #self.create_aggregate_functions()
 
         print(bold(red('Starting table analysis.')))
         with warnings.catch_warnings():
@@ -220,6 +232,7 @@ class StatusUpdate(object):
             self.spinner = Halo(title, spinner='dots')
             self.spinner.start()
         else:
+            self.spinner = None
             print(title)
 
     def complete(self, success, message):
